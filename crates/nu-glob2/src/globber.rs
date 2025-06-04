@@ -5,13 +5,12 @@ use std::{fs, io};
 
 use crate::compiler::Program;
 use crate::matcher::path_matches;
-
-use anyhow::anyhow;
+use crate::GlobResult;
 
 pub fn glob(
     relative_to: impl Into<PathBuf>,
     program: Arc<Program>,
-) -> impl Iterator<Item = anyhow::Result<PathBuf>> + Send {
+) -> impl Iterator<Item = GlobResult<PathBuf>> + Send {
     let (tx, rx) = sync_channel(4096);
 
     // Start at the program absolute prefix if the program is an absolute glob
@@ -34,7 +33,7 @@ pub fn glob(
 }
 
 fn glob_to(
-    tx: SyncSender<anyhow::Result<PathBuf>>,
+    tx: SyncSender<GlobResult<PathBuf>>,
     relative_to: &Path,
     target: &Path,
     program: &Program,
@@ -53,7 +52,7 @@ fn glob_to(
                 &scope,
             )?;
 
-            // All of the real results from the directory listing
+            // Every real result from the directory listing
             for result in results {
                 match result {
                     Ok(dir_entry) => {
@@ -69,7 +68,9 @@ fn glob_to(
                         )?;
                     }
                     Err(err) => {
-                        let wrapped_err = anyhow!("{}: {}", target.display(), err);
+                        let wrapped_err = nu_protocol::ShellError::NotFound {
+                            span: nu_protocol::Span::unknown(),
+                        };
                         tx.send(Err(wrapped_err))?;
                     }
                 }
@@ -79,7 +80,9 @@ fn glob_to(
         })
         .unwrap_or(()),
         Err(err) => {
-            let wrapped_err = anyhow!("{}: {}", target.display(), err);
+            let wrapped_err = nu_protocol::ShellError::NotFound {
+                span: nu_protocol::Span::unknown(),
+            };
             let _ = tx.send(Err(wrapped_err));
         }
     }
@@ -88,11 +91,11 @@ fn glob_to(
 fn handle_path_candidate<'a>(
     path: &Path,
     get_metadata: impl FnOnce() -> io::Result<fs::Metadata>,
-    tx: &SyncSender<anyhow::Result<PathBuf>>,
+    tx: &SyncSender<GlobResult<PathBuf>>,
     relative_to: &'a Path,
     program: &'a Program,
     scope: &rayon::Scope<'a>,
-) -> Result<(), SendError<anyhow::Result<PathBuf>>> {
+) -> Result<(), SendError<GlobResult<PathBuf>>> {
     let path_candidate = path.strip_prefix(relative_to).unwrap_or(&path);
 
     let result = path_matches(path_candidate, program);

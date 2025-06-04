@@ -1,8 +1,8 @@
 //! Compiles a glob pattern into a simple set of instructions
 
-use std::path::{Component, PathBuf};
-
 use crate::parser::{AstNode, CharacterClass, Pattern};
+use crate::GlobResult;
+use std::path::{Component, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgramOffset(pub usize);
@@ -121,7 +121,7 @@ impl std::fmt::Display for Program {
     }
 }
 
-fn append_program(out: &mut Program, node: &AstNode) -> anyhow::Result<()> {
+fn append_program(out: &mut Program, node: &AstNode) -> GlobResult<()> {
     match node {
         AstNode::Separator => {
             out.instructions.push(Instruction::Separator);
@@ -171,7 +171,7 @@ fn append_program(out: &mut Program, node: &AstNode) -> anyhow::Result<()> {
     }
 }
 
-fn append_wildcard_gadget(out: &mut Program) -> anyhow::Result<()> {
+fn append_wildcard_gadget(out: &mut Program) -> GlobResult<()> {
     // The wildcard gadget involves creating an alternative loop with AnyCharacter
     let start = out.here();
     out.instructions.push(Instruction::Alternative(start + 2));
@@ -181,7 +181,7 @@ fn append_wildcard_gadget(out: &mut Program) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn append_recurse_gadget(out: &mut Program) -> anyhow::Result<()> {
+fn append_recurse_gadget(out: &mut Program) -> GlobResult<()> {
     // The recurse gadget involves creating an alternative loop  with AnyString + Separator
     let start = out.here();
     out.instructions.push(Instruction::Alternative(start + 2));
@@ -192,7 +192,7 @@ fn append_recurse_gadget(out: &mut Program) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn append_alternatives(out: &mut Program, choices: &[Pattern]) -> anyhow::Result<()> {
+fn append_alternatives(out: &mut Program, choices: &[Pattern]) -> GlobResult<()> {
     // To compile alternatives, we first set up (choices.len() - 1) Alternative instructions
     let start = out.instructions.len();
     for _ in 0..choices.len().saturating_sub(1) {
@@ -222,9 +222,12 @@ fn append_alternatives(out: &mut Program, choices: &[Pattern]) -> anyhow::Result
     Ok(())
 }
 
-fn append_repeat(out: &mut Program, min: u32, max: u32, pattern: &Pattern) -> anyhow::Result<()> {
+fn append_repeat(out: &mut Program, min: u32, max: u32, pattern: &Pattern) -> GlobResult<()> {
     if out.counters >= u16::MAX {
-        anyhow::bail!("Exceeded the number of repeats allowed in a glob pattern");
+        return Err(nu_protocol::ShellError::InvalidGlobPattern {
+            msg: "Exceeded the number of repeats allowed in a glob pattern".to_string(),
+            span: nu_protocol::Span::unknown(),
+        });
     }
 
     let counter_id = CounterId(out.counters);
@@ -256,7 +259,7 @@ fn append_repeat(out: &mut Program, min: u32, max: u32, pattern: &Pattern) -> an
     Ok(())
 }
 
-pub fn compile(pattern: &Pattern) -> anyhow::Result<Program> {
+pub fn compile(pattern: &Pattern) -> GlobResult<Program> {
     let mut program = Program::default();
     for node in &pattern.nodes {
         append_program(&mut program, node)?;

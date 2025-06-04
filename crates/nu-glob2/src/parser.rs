@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 use std::{
     ffi::OsStr,
     path::{is_separator, Component, Path, PathBuf},
