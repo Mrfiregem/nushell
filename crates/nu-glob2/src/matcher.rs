@@ -8,7 +8,7 @@ use crate::compiler::{Instruction, Program, ProgramOffset};
 // #[cfg(test)]
 // mod tests;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MatchResult {
     /// True if the match could be made valid with more path components.
     ///

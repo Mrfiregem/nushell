@@ -1,7 +1,7 @@
 use nu_glob2::*;
 use std::num::NonZeroI32;
 use std::ops::Deref;
-use std::{io::Write, path::PathBuf, sync::Arc};
+use std::{io::Write, path::PathBuf};
 use nu_protocol::ShellError;
 
 fn die(exit_code: i32) -> nu_protocol::ShellError {
@@ -49,11 +49,14 @@ fn run_cmd() -> Result<(), ShellError> {
         Some(b"matches") => {
             let path: PathBuf = args.next().ok_or_else(|| die(1))?.into();
             let program = glob.compile()?;
-            let result = matcher::path_matches(&path, &program);
-            print!("{:?}", result);
+            if program.matches(&path) {
+                println!("{} does match the path \"{}\"", program, path.display());
+            } else {
+                println!("{} does not match the path \"{}\"", program, path.display());
+            }
         }
         Some(b"glob") => {
-            let program = Arc::new(glob.compile()?);
+            let program = glob.compile()?;
             let current_dir = std::env::current_dir().map_err(conv_err)?;
             let mut stdout = std::io::stdout();
             let mut failed = false;
