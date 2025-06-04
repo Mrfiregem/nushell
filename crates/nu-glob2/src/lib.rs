@@ -1,23 +1,28 @@
-use nu_protocol::{ShellError, Value};
+use nu_protocol::{ShellError, Span, Value};
 use std::fmt::Display;
 
-pub mod compiler;
-pub mod globber;
-pub mod matcher;
-pub mod parser;
+mod compiler;
+mod globber;
+mod matcher;
+mod parser;
 
-pub type GlobResult<T> = Result<T, ShellError>;
+pub(crate) type GlobResult<T> = Result<T, ShellError>;
 
 #[derive(Debug)]
 pub struct Glob {
     pattern_string: String,
-    span: Option<nu_protocol::Span>,
+    span: Option<Span>,
     pattern: std::sync::Arc<parser::Pattern>,
+}
+
+pub struct CompiledGlob {
+    inner_glob: Glob,
+    program: compiler::Program,
 }
 
 impl Glob {
     /// Create a new Glob from a string
-    pub fn new(pattern_string: impl Into<String>, span: Option<nu_protocol::Span>) -> Self {
+    pub fn new(pattern_string: impl Into<String>, span: Option<Span>) -> Self {
         let string = pattern_string.into();
         Glob {
             pattern: std::sync::Arc::new(parser::parse(&string)),
@@ -27,7 +32,7 @@ impl Glob {
     }
 
     /// Get internal span
-    pub fn span(&self) -> Option<nu_protocol::Span> {
+    pub fn span(&self) -> Option<Span> {
         self.span
     }
 
@@ -42,8 +47,11 @@ impl Glob {
     }
 
     /// Compile the glob to use for matching
-    pub fn compile(&self) -> GlobResult<compiler::Program> {
-        compiler::compile(&self.pattern)
+    pub fn compile(self) -> GlobResult<CompiledGlob> {
+        Ok(CompiledGlob {
+            program: compiler::compile(&self.get_pattern())?,
+            inner_glob: self,
+        })
     }
 }
 
@@ -63,7 +71,7 @@ impl nu_protocol::FromValue for Glob {
             Ok(Glob::new(val, Some(internal_span)))
         } else {
             Err(ShellError::InvalidGlobPattern {
-                msg: "Expected glob, string".to_string(),
+                msg: format!("Expected glob/string; got {}", value.get_type()),
                 span: value.span(),
             })
         }

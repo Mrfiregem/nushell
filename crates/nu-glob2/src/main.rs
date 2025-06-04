@@ -2,6 +2,7 @@ use nu_glob2::*;
 use std::num::NonZeroI32;
 use std::ops::Deref;
 use std::{io::Write, path::PathBuf, sync::Arc};
+use nu_protocol::ShellError;
 
 fn die(exit_code: i32) -> nu_protocol::ShellError {
     const USAGE: &str = "Usage: glob_experiment <pattern> <parse|compile|matches|glob> [path]";
@@ -26,7 +27,7 @@ fn main() {
     }
 }
 
-fn run_cmd() -> GlobResult<()> {
+fn run_cmd() -> Result<(), ShellError> {
     let conv_err =
         |e| nu_protocol::shell_error::io::IoError::new_internal(e, "", nu_protocol::location!());
     let mut args = std::env::args_os().skip(1);
