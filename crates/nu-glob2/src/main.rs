@@ -4,14 +4,14 @@ use std::ops::Deref;
 use std::{io::Write, path::PathBuf};
 use nu_protocol::ShellError;
 
-fn die(exit_code: i32) -> nu_protocol::ShellError {
+fn die(exit_code: i32) -> ShellError {
     const USAGE: &str = "Usage: glob_experiment <pattern> <parse|compile|matches|glob> [path]";
     if exit_code == 0 {
         println!("{}", USAGE);
     } else {
         eprintln!("{}", USAGE);
     }
-    nu_protocol::ShellError::NonZeroExitCode {
+    ShellError::NonZeroExitCode {
         exit_code: NonZeroI32::new(exit_code).expect("unreachable"),
         span: nu_protocol::Span::unknown(),
     }
