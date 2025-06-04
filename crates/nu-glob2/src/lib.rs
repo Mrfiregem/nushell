@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use nu_protocol::{ShellError, Value};
 use std::fmt::Display;
 
 pub mod compiler;
@@ -6,22 +6,31 @@ pub mod globber;
 pub mod matcher;
 pub mod parser;
 
-pub type GlobResult<T> = Result<T, nu_protocol::ShellError>;
+pub type GlobResult<T> = Result<T, ShellError>;
 
 #[derive(Debug)]
 pub struct Glob {
     pattern_string: String,
+    span: Option<nu_protocol::Span>,
     pattern: std::sync::Arc<parser::Pattern>,
 }
 
 impl Glob {
     /// Create a new Glob from a string
-    pub fn new(pattern_string: &str) -> Self {
+    pub fn new(pattern_string: impl Into<String>, span: Option<nu_protocol::Span>) -> Self {
+        let string = pattern_string.into();
         Glob {
-            pattern_string: String::from(pattern_string),
-            pattern: std::sync::Arc::new(parser::parse(pattern_string)),
+            pattern: std::sync::Arc::new(parser::parse(&string)),
+            span,
+            pattern_string: string,
         }
     }
+
+    /// Get internal span
+    pub fn span(&self) -> Option<nu_protocol::Span> {
+        self.span
+    }
+
     /// Return the initial glob pattern string
     pub fn get_pattern_string(&self) -> &str {
         self.pattern_string.as_str()
@@ -44,16 +53,19 @@ impl Display for Glob {
     }
 }
 
-impl TryFrom<OsString> for Glob {
-    type Error = nu_protocol::ShellError;
-
-    fn try_from(value: OsString) -> Result<Self, Self::Error> {
-        let pattern_string = value
-            .to_str()
-            .ok_or_else(|| Self::Error::InvalidGlobPattern {
-                msg: "Unable to convert string to Glob".to_string(),
-                span: nu_protocol::Span::unknown(),
-            })?;
-        Ok(Glob::new(pattern_string))
+impl nu_protocol::FromValue for Glob {
+    fn from_value(value: Value) -> Result<Self, ShellError> {
+        if let Value::Glob {
+            val, internal_span, ..
+        }
+        | Value::String { val, internal_span } = value
+        {
+            Ok(Glob::new(val, Some(internal_span)))
+        } else {
+            Err(ShellError::InvalidGlobPattern {
+                msg: "Expected glob, string".to_string(),
+                span: value.span(),
+            })
+        }
     }
 }

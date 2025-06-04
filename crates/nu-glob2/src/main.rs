@@ -35,7 +35,7 @@ fn run_cmd() -> GlobResult<()> {
         Some(pat) => pat,
         None => return Err(die(1)),
     };
-    let glob = Glob::new(&*pattern_string.to_string_lossy());
+    let glob = Glob::new(&*pattern_string.to_string_lossy(), None);
 
     match args.next().map(|s| s.into_encoded_bytes()).as_deref() {
         Some(b"parse") => {
