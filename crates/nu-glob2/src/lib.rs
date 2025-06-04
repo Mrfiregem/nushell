@@ -1,5 +1,5 @@
 use nu_protocol::{ShellError, Span, Value};
-use std::fmt::Display;
+use std::sync::Arc;
 
 mod compiler;
 mod globber;
@@ -12,12 +12,12 @@ pub(crate) type GlobResult<T> = Result<T, ShellError>;
 pub struct Glob {
     pattern_string: String,
     span: Option<Span>,
-    pattern: std::sync::Arc<parser::Pattern>,
+    pattern: Arc<parser::Pattern>,
 }
 
 pub struct CompiledGlob {
     inner_glob: Glob,
-    program: compiler::Program,
+    program: Arc<compiler::Program>,
 }
 
 impl Glob {
@@ -25,7 +25,7 @@ impl Glob {
     pub fn new(pattern_string: impl Into<String>, span: Option<Span>) -> Self {
         let string = pattern_string.into();
         Glob {
-            pattern: std::sync::Arc::new(parser::parse(&string)),
+            pattern: Arc::new(parser::parse(&string)),
             span,
             pattern_string: string,
         }
@@ -42,22 +42,22 @@ impl Glob {
     }
 
     /// Return the inner glob Pattern
-    pub fn get_pattern(&self) -> std::sync::Arc<parser::Pattern> {
+    pub fn get_pattern(&self) -> Arc<parser::Pattern> {
         self.pattern.clone()
     }
 
     /// Compile the glob to use for matching
     pub fn compile(self) -> GlobResult<CompiledGlob> {
         Ok(CompiledGlob {
-            program: compiler::compile(&self.get_pattern())?,
+            program: Arc::new(compiler::compile(&self.get_pattern())?),
             inner_glob: self,
         })
     }
 }
 
-impl Display for Glob {
+impl std::fmt::Display for Glob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{}", self.get_pattern_string())
     }
 }
 
@@ -75,5 +75,28 @@ impl nu_protocol::FromValue for Glob {
                 span: value.span(),
             })
         }
+    }
+}
+
+impl CompiledGlob {
+    /// Convert a CompiledGlob object back into a Glob
+    pub fn into_inner(self) -> Glob {
+        self.inner_glob
+    }
+
+    /// Get the initial glob pattern used to create the Glob
+    pub fn get_pattern_string(&self) -> &str {
+        self.inner_glob.get_pattern_string()
+    }
+
+    /// Check if a given path would match the glob pattern
+    pub fn matches(&self, path: &std::path::Path) -> bool {
+        matcher::path_matches(path, &*self.program) == matcher::MatchResult::none()
+    }
+}
+
+impl std::fmt::Display for CompiledGlob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.get_pattern_string())
     }
 }
