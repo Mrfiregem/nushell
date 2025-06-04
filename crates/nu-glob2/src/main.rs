@@ -1,11 +1,7 @@
 use std::{io::Write, path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, bail};
-
-mod compiler;
-mod globber;
-mod matcher;
-mod parser;
+use nu_glob2::*;
 
 fn main() -> anyhow::Result<()> {
     const USAGE: &str = "Usage: glob_experiment <pattern> <parse|compile|matches|glob> [path]";
