@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use nu_protocol::{ShellError, Span, Value};
 use std::sync::Arc;
 
@@ -80,13 +81,21 @@ impl nu_protocol::FromValue for Glob {
 
 impl CompiledGlob {
     /// Convert a CompiledGlob object back into a Glob
-    pub fn into_inner(self) -> Glob {
+    pub fn into_glob(self) -> Glob {
         self.inner_glob
+    }
+
+    pub fn inner_program(&self) -> Arc<compiler::Program> {
+        self.program.clone()
     }
 
     /// Get the initial glob pattern used to create the Glob
     pub fn get_pattern_string(&self) -> &str {
         self.inner_glob.get_pattern_string()
+    }
+
+    pub fn absolute_prefix(&self) -> Option<std::path::PathBuf> {
+        self.program.absolute_prefix.clone()
     }
 
     /// Check if a given path would match the glob pattern
@@ -98,5 +107,22 @@ impl CompiledGlob {
 impl std::fmt::Display for CompiledGlob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.get_pattern_string())
+    }
+}
+
+impl IntoIterator for CompiledGlob {
+    type Item = std::path::PathBuf;
+    type IntoIter = GlobIterator;
+}
+
+pub struct GlobIterator {
+    glob: CompiledGlob,
+    index: usize,
+}
+
+impl Iterator for GlobIterator {
+    type Item = PathBuf;
+    fn next(&mut self) -> Option<Self::Item> {
+        globber::glob(self.glob)
     }
 }
