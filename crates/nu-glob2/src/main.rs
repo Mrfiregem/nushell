@@ -1,45 +1,68 @@
+use nu_glob2::*;
+use std::num::NonZeroI32;
+use std::ops::Deref;
 use std::{io::Write, path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, bail};
-use nu_glob2::*;
-
-fn main() -> anyhow::Result<()> {
+fn die(exit_code: i32) -> nu_protocol::ShellError {
     const USAGE: &str = "Usage: glob_experiment <pattern> <parse|compile|matches|glob> [path]";
+    if exit_code == 0 {
+        println!("{}", USAGE);
+    } else {
+        eprintln!("{}", USAGE);
+    }
+    nu_protocol::ShellError::NonZeroExitCode {
+        exit_code: NonZeroI32::new(exit_code).expect("unreachable"),
+        span: nu_protocol::Span::unknown(),
+    }
+}
 
-    env_logger::init();
+fn main() {
+    match run_cmd() {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!("error: {}", err);
+            std::process::exit(err.exit_code().unwrap_or(1));
+        }
+    }
+}
 
+fn run_cmd() -> GlobResult<()> {
+    let conv_err =
+        |e| nu_protocol::shell_error::io::IoError::new_internal(e, "", nu_protocol::location!());
     let mut args = std::env::args_os().skip(1);
 
-    let pattern_string = args.next().ok_or_else(|| anyhow!(USAGE))?;
+    let pattern_string = match args.next() {
+        Some(pat) => pat,
+        None => return Err(die(1)),
+    };
+    let glob = Glob::new(&*pattern_string.to_string_lossy());
 
     match args.next().map(|s| s.into_encoded_bytes()).as_deref() {
         Some(b"parse") => {
-            let pattern = parser::parse(pattern_string);
-            println!("{:#?}", pattern);
+            println!("{:#?}", glob.get_pattern().deref());
         }
         Some(b"compile") => {
-            let pattern = parser::parse(pattern_string);
-            let program = compiler::compile(&pattern)?;
+            let program = glob.compile()?;
             print!("{}", program);
         }
         Some(b"matches") => {
-            let path: PathBuf = args.next().ok_or_else(|| anyhow!(USAGE))?.into();
-            let pattern = parser::parse(pattern_string);
-            let program = compiler::compile(&pattern)?;
+            let path: PathBuf = args.next().ok_or_else(|| die(1))?.into();
+            let program = glob.compile()?;
             let result = matcher::path_matches(&path, &program);
             print!("{:?}", result);
         }
         Some(b"glob") => {
-            let pattern = parser::parse(pattern_string);
-            let program = Arc::new(compiler::compile(&pattern)?);
-            let current_dir = std::env::current_dir()?;
+            let program = Arc::new(glob.compile()?);
+            let current_dir = std::env::current_dir().map_err(conv_err)?;
             let mut stdout = std::io::stdout();
             let mut failed = false;
             for result in globber::glob(current_dir, program) {
                 match result {
                     Ok(path) => {
-                        stdout.write_all(path.as_os_str().as_encoded_bytes())?;
-                        stdout.write_all(b"\n")?;
+                        stdout
+                            .write_all(path.as_os_str().as_encoded_bytes())
+                            .map_err(conv_err)?;
+                        stdout.write_all(b"\n").map_err(conv_err)?;
                     }
                     Err(err) => {
                         eprintln!("{}", err);
@@ -51,7 +74,7 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        _ => bail!(USAGE),
+        _ => return Err(die(1)),
     }
 
     Ok(())

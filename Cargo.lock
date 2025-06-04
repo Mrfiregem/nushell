@@ -3892,7 +3892,6 @@ dependencies = [
 name = "nu-glob2"
 version = "0.104.2"
 dependencies = [
- "anyhow",
  "log",
  "nu-protocol",
  "rayon",
