@@ -101,7 +101,16 @@ impl CompiledGlob {
 
     /// Check if a given path would match the glob pattern
     pub fn matches(&self, path: &std::path::Path) -> bool {
-        matcher::path_matches(path, &*self.program) == matcher::MatchResult::none()
+        matcher::path_matches(path, &self.program) == matcher::MatchResult::none()
+    }
+
+    pub fn walk(
+        &self,
+    ) -> impl Iterator<Item = Result<std::path::PathBuf, error::GlobError>> + Send {
+        let relative_to = self
+            .absolute_prefix()
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        globber::glob(relative_to, self.inner_program())
     }
 }
 
@@ -110,5 +119,3 @@ impl std::fmt::Display for CompiledGlob {
         write!(f, "{}", self.get_pattern_string())
     }
 }
-
-pub use globber::glob as walk_glob;

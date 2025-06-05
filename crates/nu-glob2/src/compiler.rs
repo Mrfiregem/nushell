@@ -223,7 +223,7 @@ fn append_alternatives(out: &mut Program, choices: &[Pattern]) -> GlobResult<()>
 }
 
 fn append_repeat(out: &mut Program, min: u32, max: u32, pattern: &Pattern) -> GlobResult<()> {
-    if out.counters >= u16::MAX {
+    if out.counters == u16::MAX {
         return Err(crate::error::GlobError::CounterOverflow(out.counters));
     }
 

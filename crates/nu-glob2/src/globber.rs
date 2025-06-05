@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::{fs, io};
 
 use crate::compiler::Program;
+use crate::error::GlobError;
 use crate::matcher::path_matches;
 use crate::GlobResult;
 
@@ -50,7 +51,7 @@ fn glob_to(
                 &tx,
                 relative_to,
                 program,
-                &scope,
+                scope,
             )?;
 
             // Every real result from the directory listing
@@ -65,11 +66,14 @@ fn glob_to(
                             &tx,
                             relative_to,
                             program,
-                            &scope,
+                            scope,
                         )?;
                     }
                     Err(err) => {
-                        tx.send(Err(err.into()))?;
+                        tx.send(Err(GlobError::Io {
+                            source: err,
+                            path: target.to_path_buf(),
+                        }))?;
                     }
                 }
             }
@@ -78,7 +82,10 @@ fn glob_to(
         })
         .unwrap_or(()),
         Err(err) => {
-            let _ = tx.send(Err(err.into()));
+            let _ = tx.send(Err(GlobError::Io {
+                source: err,
+                path: target.to_path_buf(),
+            }));
         }
     }
 }
@@ -91,7 +98,7 @@ fn handle_path_candidate<'a>(
     program: &'a Program,
     scope: &rayon::Scope<'a>,
 ) -> Result<(), SendError<GlobResult<PathBuf>>> {
-    let path_candidate = path.strip_prefix(relative_to).unwrap_or(&path);
+    let path_candidate = path.strip_prefix(relative_to).unwrap_or(path);
 
     let result = path_matches(path_candidate, program);
 

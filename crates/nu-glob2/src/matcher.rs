@@ -98,7 +98,7 @@ struct Matcher<'a> {
     result: MatchResult,
 }
 
-impl<'a> Matcher<'a> {
+impl Matcher<'_> {
     fn advance(&mut self, program: &Program) -> bool {
         log::debug!("{:#?}", self);
         log::debug!("{}", &program.instructions[self.state.pc.0]);
