@@ -105,7 +105,7 @@ fn node_separator<'a, 'b>((string, out): NodeInput<'a, 'b>) -> NodeResult<'a, 'b
 }
 
 fn node_any_character<'a, 'b>((string, out): NodeInput<'a, 'b>) -> NodeResult<'a, 'b> {
-    if string.get(0) == Some(&b'?') {
+    if string.first() == Some(&b'?') {
         out.push(AstNode::AnyCharacter);
         Ok((&string[1..], out))
     } else {
@@ -123,7 +123,7 @@ fn node_recurse<'a, 'b>((string, out): NodeInput<'a, 'b>) -> NodeResult<'a, 'b> 
 }
 
 fn node_wildcard<'a, 'b>((string, out): NodeInput<'a, 'b>) -> NodeResult<'a, 'b> {
-    if string.get(0) == Some(&b'*') {
+    if string.first() == Some(&b'*') {
         out.push(AstNode::Wildcard);
         Ok((&string[1..], out))
     } else {
@@ -135,18 +135,18 @@ fn node_alternatives<'a, 'b>((mut string, out): NodeInput<'a, 'b>) -> NodeResult
     let original_string = string;
     let mut choices = vec![];
     let mut current_out = vec![];
-    if string.get(0) == Some(&b'{') {
+    if string.first() == Some(&b'{') {
         string = &string[1..];
         loop {
             string = parse_nodes(
                 string,
-                |string| !matches!(string.get(0), Some(b',' | b'}')),
+                |string| !matches!(string.first(), Some(b',' | b'}')),
                 &mut current_out,
             );
-            match string.get(0) {
+            match string.first() {
                 Some(b',') => {
                     string = &string[1..];
-                    let nodes = std::mem::replace(&mut current_out, vec![]);
+                    let nodes = std::mem::take(&mut current_out);
                     choices.push(Pattern { nodes });
                 }
                 Some(b'}') => {
@@ -169,7 +169,7 @@ fn node_alternatives<'a, 'b>((mut string, out): NodeInput<'a, 'b>) -> NodeResult
 
 fn node_character_class<'a, 'b>((mut string, out): NodeInput<'a, 'b>) -> NodeResult<'a, 'b> {
     let original_string = string;
-    if string.get(0) == Some(&b'[') {
+    if string.first() == Some(&b'[') {
         string = &string[1..];
         let mut classes = vec![];
         loop {
@@ -177,7 +177,7 @@ fn node_character_class<'a, 'b>((mut string, out): NodeInput<'a, 'b>) -> NodeRes
                 return Err((original_string, out));
             };
             string = next_string;
-            let ch_class = if string.get(0) == Some(&b'-') {
+            let ch_class = if string.first() == Some(&b'-') {
                 // This is a range, due to the - char
                 string = &string[1..];
                 let Some((end_char, next_string)) = get_utf8_char(string) else {
@@ -190,7 +190,7 @@ fn node_character_class<'a, 'b>((mut string, out): NodeInput<'a, 'b>) -> NodeRes
                 CharacterClass::Single(start_char)
             };
             classes.push(ch_class);
-            match string.get(0) {
+            match string.first() {
                 Some(b']') => {
                     string = &string[1..];
                     break;
@@ -214,14 +214,14 @@ fn node_repeat<'a, 'b>((mut string, out): NodeInput<'a, 'b>) -> NodeResult<'a, '
             return Err((original_string, out));
         };
     }
-    if string.get(0) == Some(&b'<') {
+    if string.first() == Some(&b'<') {
         string = &string[1..];
         string = parse_nodes(
             string,
-            |string| !matches!(string.get(0), Some(b':')),
+            |string| !matches!(string.first(), Some(b':')),
             &mut current_out,
         );
-        if string.get(0) != Some(&b':') {
+        if string.first() != Some(&b':') {
             fail!();
         }
         string = &string[1..];

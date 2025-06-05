@@ -15,8 +15,7 @@ fn main() {
     }
 }
 
-fn run_cmd() -> Result<(), Box<str>> {
-    let conv_err = |e: Box<dyn std::error::Error>| -> Box<str> { format!("{e}").into() };
+fn run_cmd() -> Result<(), String> {
     let mut args = std::env::args_os().skip(1);
 
     let pattern_string = match args.next() {
@@ -30,15 +29,12 @@ fn run_cmd() -> Result<(), Box<str>> {
             println!("{:#?}", glob.get_pattern().deref());
         }
         Some(b"compile") => {
-            let program = glob.compile().map_err(conv_err)?;
+            let program = glob.compile().map_err(convert_error)?;
             print!("{}", program);
         }
         Some(b"matches") => {
-            let path: PathBuf = args
-                .next()
-                .ok_or_else(|| "no path given to match on")?
-                .into();
-            let program = glob.compile().map_err(|e| format!("{e}"))?;
+            let path: PathBuf = args.next().ok_or("no path given to match on")?.into();
+            let program = glob.compile().map_err(convert_error)?;
             if program.matches(&path) {
                 println!("{} does match the path \"{}\"", program, path.display());
             } else {
@@ -46,18 +42,16 @@ fn run_cmd() -> Result<(), Box<str>> {
             }
         }
         Some(b"glob") => {
-            let program = glob.compile().map_err(|e| format!("{e}").into())?;
-            let current_dir = std::env::current_dir().map_err(|e| format!("{e}").into())?;
+            let program = glob.compile().map_err(convert_error)?;
             let mut stdout = std::io::stdout();
             let mut failed = false;
-            for result in walk_glob(current_dir, program.inner_program()) {
+            for result in program.walk() {
                 match result {
                     Ok(path) => {
                         stdout
                             .write_all(path.as_os_str().as_encoded_bytes())
-                            .map_err(conv_err)
-                            .map_err(|e| format!("{e}").into())?;
-                        stdout.write_all(b"\n").map_err(|e| format!("{e}").into())?;
+                            .map_err(convert_error)?;
+                        stdout.write_all(b"\n").map_err(convert_error)?;
                     }
                     Err(err) => {
                         eprintln!("{}", err);
@@ -73,4 +67,11 @@ fn run_cmd() -> Result<(), Box<str>> {
     }
 
     Ok(())
+}
+
+fn convert_error<E>(error: E) -> String
+where
+    E: std::error::Error,
+{
+    error.to_string()
 }
