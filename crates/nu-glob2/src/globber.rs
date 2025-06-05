@@ -7,6 +7,7 @@ use crate::compiler::Program;
 use crate::matcher::path_matches;
 use crate::GlobResult;
 
+/// Return PathBufs that match the given compiled glob
 pub fn glob(
     relative_to: impl Into<PathBuf>,
     program: Arc<Program>,
@@ -68,10 +69,7 @@ fn glob_to(
                         )?;
                     }
                     Err(err) => {
-                        let wrapped_err = nu_protocol::ShellError::NotFound {
-                            span: nu_protocol::Span::unknown(),
-                        };
-                        tx.send(Err(wrapped_err))?;
+                        tx.send(Err(err.into()))?;
                     }
                 }
             }
@@ -80,10 +78,7 @@ fn glob_to(
         })
         .unwrap_or(()),
         Err(err) => {
-            let wrapped_err = nu_protocol::ShellError::NotFound {
-                span: nu_protocol::Span::unknown(),
-            };
-            let _ = tx.send(Err(wrapped_err));
+            let _ = tx.send(Err(err.into()));
         }
     }
 }

@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use nu_protocol::{ShellError, Span, Value};
 use std::sync::Arc;
 
@@ -7,7 +6,9 @@ mod globber;
 mod matcher;
 mod parser;
 
-pub(crate) type GlobResult<T> = Result<T, ShellError>;
+pub mod error;
+
+pub(crate) type GlobResult<T> = Result<T, error::GlobError>;
 
 #[derive(Debug)]
 pub struct Glob {
@@ -110,19 +111,4 @@ impl std::fmt::Display for CompiledGlob {
     }
 }
 
-impl IntoIterator for CompiledGlob {
-    type Item = std::path::PathBuf;
-    type IntoIter = GlobIterator;
-}
-
-pub struct GlobIterator {
-    glob: CompiledGlob,
-    index: usize,
-}
-
-impl Iterator for GlobIterator {
-    type Item = PathBuf;
-    fn next(&mut self) -> Option<Self::Item> {
-        globber::glob(self.glob)
-    }
-}
+pub use globber::glob as walk_glob;
