@@ -1,40 +1,27 @@
 use nu_glob2::*;
-use std::num::NonZeroI32;
 use std::ops::Deref;
 use std::{io::Write, path::PathBuf};
-use nu_protocol::ShellError;
-
-fn die(exit_code: i32) -> ShellError {
-    const USAGE: &str = "Usage: glob_experiment <pattern> <parse|compile|matches|glob> [path]";
-    if exit_code == 0 {
-        println!("{}", USAGE);
-    } else {
-        eprintln!("{}", USAGE);
-    }
-    ShellError::NonZeroExitCode {
-        exit_code: NonZeroI32::new(exit_code).expect("unreachable"),
-        span: nu_protocol::Span::unknown(),
-    }
-}
 
 fn main() {
+    const USAGE: &str = "Usage: glob_experiment <pattern> <parse|compile|matches|glob> [path]";
+
     match run_cmd() {
         Ok(()) => {}
         Err(err) => {
             eprintln!("error: {}", err);
-            std::process::exit(err.exit_code().unwrap_or(1));
+            eprintln!("\n{}", USAGE);
+            std::process::exit(1);
         }
     }
 }
 
-fn run_cmd() -> Result<(), ShellError> {
-    let conv_err =
-        |e| nu_protocol::shell_error::io::IoError::new_internal(e, "", nu_protocol::location!());
+fn run_cmd() -> Result<(), Box<str>> {
+    let conv_err = |e: Box<dyn std::error::Error>| -> Box<str> { format!("{e}").into() };
     let mut args = std::env::args_os().skip(1);
 
     let pattern_string = match args.next() {
         Some(pat) => pat,
-        None => return Err(die(1)),
+        None => return Err("missing pattern".into()),
     };
     let glob = Glob::new(&*pattern_string.to_string_lossy(), None);
 
@@ -43,12 +30,15 @@ fn run_cmd() -> Result<(), ShellError> {
             println!("{:#?}", glob.get_pattern().deref());
         }
         Some(b"compile") => {
-            let program = glob.compile()?;
+            let program = glob.compile().map_err(conv_err)?;
             print!("{}", program);
         }
         Some(b"matches") => {
-            let path: PathBuf = args.next().ok_or_else(|| die(1))?.into();
-            let program = glob.compile()?;
+            let path: PathBuf = args
+                .next()
+                .ok_or_else(|| "no path given to match on")?
+                .into();
+            let program = glob.compile().map_err(|e| format!("{e}"))?;
             if program.matches(&path) {
                 println!("{} does match the path \"{}\"", program, path.display());
             } else {
@@ -56,17 +46,18 @@ fn run_cmd() -> Result<(), ShellError> {
             }
         }
         Some(b"glob") => {
-            let program = glob.compile()?;
-            let current_dir = std::env::current_dir().map_err(conv_err)?;
+            let program = glob.compile().map_err(|e| format!("{e}").into())?;
+            let current_dir = std::env::current_dir().map_err(|e| format!("{e}").into())?;
             let mut stdout = std::io::stdout();
             let mut failed = false;
-            for result in globber::glob(current_dir, program) {
+            for result in walk_glob(current_dir, program.inner_program()) {
                 match result {
                     Ok(path) => {
                         stdout
                             .write_all(path.as_os_str().as_encoded_bytes())
-                            .map_err(conv_err)?;
-                        stdout.write_all(b"\n").map_err(conv_err)?;
+                            .map_err(conv_err)
+                            .map_err(|e| format!("{e}").into())?;
+                        stdout.write_all(b"\n").map_err(|e| format!("{e}").into())?;
                     }
                     Err(err) => {
                         eprintln!("{}", err);
@@ -78,7 +69,7 @@ fn run_cmd() -> Result<(), ShellError> {
                 std::process::exit(1);
             }
         }
-        _ => return Err(die(1)),
+        _ => return Err("invalid command".into()),
     }
 
     Ok(())

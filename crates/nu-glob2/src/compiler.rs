@@ -224,10 +224,7 @@ fn append_alternatives(out: &mut Program, choices: &[Pattern]) -> GlobResult<()>
 
 fn append_repeat(out: &mut Program, min: u32, max: u32, pattern: &Pattern) -> GlobResult<()> {
     if out.counters >= u16::MAX {
-        return Err(nu_protocol::ShellError::InvalidGlobPattern {
-            msg: "Exceeded the number of repeats allowed in a glob pattern".to_string(),
-            span: nu_protocol::Span::unknown(),
-        });
+        return Err(crate::error::GlobError::CounterOverflow(out.counters));
     }
 
     let counter_id = CounterId(out.counters);

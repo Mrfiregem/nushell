@@ -3893,8 +3893,10 @@ name = "nu-glob2"
 version = "0.104.2"
 dependencies = [
  "log",
+ "miette",
  "nu-protocol",
  "rayon",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
