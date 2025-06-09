@@ -10,6 +10,22 @@ pub mod error;
 
 pub(crate) type GlobResult<T> = Result<T, error::GlobError>;
 
+pub enum FilterType {
+    File,
+    Directory,
+    Symlink
+}
+
+#[derive(Default, Debug)]
+pub struct WalkOptions {
+    max_depth: Option<usize>,
+    no_dirs: bool,
+    no_files: bool,
+    no_symlinks: bool,
+    follow_symlinks: bool,
+    exclusions: Vec<Glob>
+}
+
 #[derive(Debug)]
 pub struct Glob {
     pattern_string: String,
@@ -19,7 +35,44 @@ pub struct Glob {
 
 pub struct CompiledGlob {
     inner_glob: Glob,
+    walk_options: WalkOptions,
     program: Arc<compiler::Program>,
+}
+
+impl WalkOptions {
+    pub fn build() -> Self {
+        Self::default()
+    }
+
+    pub fn max_depth(mut self, depth: Option<usize>) -> Self {
+        self.max_depth = depth;
+        self
+    }
+
+    pub fn exclude_files(mut self, option: bool) -> Self {
+        self.no_files = option;
+        self
+    }
+    
+    pub fn exclude_directories(mut self, option: bool) -> Self {
+        self.no_dirs = option;
+        self
+    }
+    
+    pub fn exclude_symlinks(mut self, option: bool) -> Self {
+        self.no_symlinks = option;
+        self
+    }
+    
+    pub fn follow_symlinks(mut self, option: bool) -> Self {
+        self.follow_symlinks = option;
+        self
+    }
+
+    pub fn exclude_patterns(mut self, patterns: Vec<Glob>) -> Self {
+        self.exclusions = patterns;
+        self
+    }
 }
 
 impl Glob {
@@ -49,9 +102,10 @@ impl Glob {
     }
 
     /// Compile the glob to use for matching
-    pub fn compile(self) -> GlobResult<CompiledGlob> {
+    pub fn compile(self, walk_options: WalkOptions) -> GlobResult<CompiledGlob> {
         Ok(CompiledGlob {
             program: Arc::new(compiler::compile(&self.get_pattern())?),
+            walk_options,
             inner_glob: self,
         })
     }

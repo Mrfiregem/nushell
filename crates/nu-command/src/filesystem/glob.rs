@@ -2,7 +2,7 @@ use nu_engine::command_prelude::*;
 use nu_protocol::{ListStream, Signals};
 use wax::{Glob as WaxGlob, WalkBehavior, WalkEntry};
 
-use nu_glob2::Glob as NuGlob2;
+use nu_glob2::{Glob as NuGlob, WalkOptions};
 
 #[derive(Clone)]
 pub struct Glob;
@@ -136,28 +136,42 @@ impl Command for Glob {
         _input: PipelineData,
     ) -> Result<PipelineData, ShellError> {
         new_glob(engine_state, stack, call)
-        // old_glob(engine_state, stack, call)
     }
 }
 
-#[cfg(windows)]
-fn patch_windows_glob_pattern(glob_pattern: String, glob_span: Span) -> Result<String, ShellError> {
-    let mut chars = glob_pattern.chars();
-    match (chars.next(), chars.next(), chars.next()) {
-        (Some(drive), Some(':'), Some('/' | '\\')) if drive.is_ascii_alphabetic() => {
-            Ok(format!("{drive}\\:/{}", chars.as_str()))
-        }
-        (Some(drive), Some(':'), Some(_)) if drive.is_ascii_alphabetic() => {
-            Err(ShellError::GenericError {
-                error: "invalid Windows path format".into(),
-                msg: "Windows paths with drive letters must include a path separator (/) after the colon".into(),
-                span: Some(glob_span),
-                help: Some("use format like 'C:/' instead of 'C:'".into()),
-                inner: vec![],
-            })
-        }
-        _ => Ok(glob_pattern),
+fn value_into_glob(value: Value, span: Span) -> Result<NuGlob, ShellError> {
+    match value {
+        Value::String { val, internal_span }
+        | Value::Glob {
+            val, internal_span, ..
+        } => Ok(NuGlob::new(val, Some(internal_span))),
+        _ => Err(ShellError::IncorrectValue {
+            msg: "Incorrect glob pattern supplied to glob. Please use string only.".to_string(),
+            val_span: span,
+            call_span: span,
+        }),
     }
+}
+
+fn build_walk_options(
+    engine_state: &EngineState,
+    stack: &mut Stack,
+    call: &Call,
+) -> Result<WalkOptions, ShellError> {
+    let exclusion_patterns = match call.get_flag::<Vec<Value>>(engine_state, stack, "exclude")? {
+        None => Vec::new(),
+        Some(list) => list
+            .into_iter()
+            .map(|val| value_into_glob(val, call.head))
+            .collect::<Result<_, _>>()?,
+    };
+    let options = WalkOptions::build()
+        .max_depth(call.get_flag(engine_state, stack, "depth")?)
+        .exclude_files(call.has_flag(engine_state, stack, "no-file")?)
+        .exclude_directories(call.has_flag(engine_state, stack, "no-dir")?)
+        .exclude_symlinks(call.has_flag(engine_state, stack, "no-symlink")?)
+        .exclude_patterns(exclusion_patterns);
+    Ok(options)
 }
 
 fn new_glob(
@@ -168,19 +182,9 @@ fn new_glob(
     let span = call.head;
     let input_value: Value = call.req(engine_state, stack, 0)?;
 
-    let pattern_string = match input_value {
-        Value::String { val, .. } | Value::Glob { val, .. } => val,
-        _ => {
-            return Err(ShellError::IncorrectValue {
-                msg: "Incorrect glob pattern supplied to glob. Please use string only.".to_string(),
-                val_span: call.head,
-                call_span: span,
-            });
-        }
-    };
-
-    let glob = NuGlob2::new(pattern_string, Some(span))
-        .compile()
+    let options = build_walk_options(engine_state, stack, call)?;
+    let glob = value_into_glob(input_value, span)?
+        .compile(options)
         .map_err(|e| e.into_shell_error(span))?;
 
     let results: Vec<Value> = glob
@@ -188,55 +192,10 @@ fn new_glob(
         .filter_map(|f| {
             f.ok()
                 .map(|path| Value::string(path.to_string_lossy(), span))
-        }).collect();
-    
-    Ok(results.into_pipeline_data(span, engine_state.signals().clone()))
-}
-
-fn convert_patterns(columns: &[Value]) -> Result<Vec<String>, ShellError> {
-    let res = columns
-        .iter()
-        .map(|value| match &value {
-            Value::String { val: s, .. } => Ok(s.clone()),
-            _ => Err(ShellError::IncompatibleParametersSingle {
-                msg: "Incorrect column format, Only string as column name".to_string(),
-                span: value.span(),
-            }),
         })
-        .collect::<Result<Vec<String>, _>>()?;
+        .collect();
 
-    Ok(res)
-}
-
-fn glob_to_value(
-    signals: &Signals,
-    glob_results: impl Iterator<Item = WalkEntry<'static>> + Send + 'static,
-    no_dirs: bool,
-    no_files: bool,
-    no_symlinks: bool,
-    span: Span,
-) -> ListStream {
-    let map_signals = signals.clone();
-    let result = glob_results.filter_map(move |entry| {
-        if let Err(err) = map_signals.check(span) {
-            return Some(Value::error(err, span));
-        };
-        let file_type = entry.file_type();
-
-        if !(no_dirs && file_type.is_dir()
-            || no_files && file_type.is_file()
-            || no_symlinks && file_type.is_symlink())
-        {
-            Some(Value::string(
-                entry.into_path().to_string_lossy().to_string(),
-                span,
-            ))
-        } else {
-            None
-        }
-    });
-
-    ListStream::new(result, span, signals.clone())
+    Ok(results.into_pipeline_data(span, engine_state.signals().clone()))
 }
 
 #[cfg(windows)]
@@ -287,160 +246,4 @@ mod windows_tests {
         let patched = patch_windows_glob_pattern(unpatched, Span::test_data()).unwrap();
         assert!(WaxGlob::new(&patched).is_ok());
     }
-}
-
-fn old_glob(
-    engine_state: &EngineState,
-    stack: &mut Stack,
-    call: &Call,
-) -> Result<PipelineData, ShellError> {
-    let span = call.head;
-    let glob_pattern_input: Value = call.req(engine_state, stack, 0)?;
-    let glob_span = glob_pattern_input.span();
-    let depth = call.get_flag(engine_state, stack, "depth")?;
-    let no_dirs = call.has_flag(engine_state, stack, "no-dir")?;
-    let no_files = call.has_flag(engine_state, stack, "no-file")?;
-    let no_symlinks = call.has_flag(engine_state, stack, "no-symlink")?;
-    let follow_symlinks = call.has_flag(engine_state, stack, "follow-symlinks")?;
-    let paths_to_exclude: Option<Value> = call.get_flag(engine_state, stack, "exclude")?;
-
-    let (not_patterns, not_pattern_span): (Vec<String>, Span) = match paths_to_exclude {
-        None => (vec![], span),
-        Some(f) => {
-            let pat_span = f.span();
-            match f {
-                Value::List { vals: pats, .. } => {
-                    let p = convert_patterns(pats.as_slice())?;
-                    (p, pat_span)
-                }
-                _ => (vec![], span),
-            }
-        }
-    };
-
-    let glob_pattern = match glob_pattern_input {
-        Value::String { val, .. } | Value::Glob { val, .. } => val,
-        _ => {
-            return Err(ShellError::IncorrectValue {
-                msg: "Incorrect glob pattern supplied to glob. Please use string or glob only."
-                    .to_string(),
-                val_span: call.head,
-                call_span: glob_span,
-            });
-        }
-    };
-
-    // paths starting with drive letters must be escaped on Windows
-    #[cfg(windows)]
-    let glob_pattern = patch_windows_glob_pattern(glob_pattern, glob_span)?;
-
-    if glob_pattern.is_empty() {
-        return Err(ShellError::GenericError {
-            error: "glob pattern must not be empty".into(),
-            msg: "glob pattern is empty".into(),
-            span: Some(glob_span),
-            help: Some("add characters to the glob pattern".into()),
-            inner: vec![],
-        });
-    }
-
-    // below we have to check / instead of MAIN_SEPARATOR because glob uses / as separator
-    // using a glob like **\*.rs should fail because it's not a valid glob pattern
-    let folder_depth = if let Some(depth) = depth {
-        depth
-    } else if glob_pattern.contains("**") {
-        usize::MAX
-    } else if glob_pattern.contains('/') {
-        glob_pattern.split('/').count() + 1
-    } else {
-        1
-    };
-
-    let (prefix, glob) = match WaxGlob::new(&glob_pattern) {
-        Ok(p) => p.partition(),
-        Err(e) => {
-            return Err(ShellError::GenericError {
-                error: "error with glob pattern".into(),
-                msg: format!("{e}"),
-                span: Some(glob_span),
-                help: None,
-                inner: vec![],
-            });
-        }
-    };
-
-    let path = engine_state.cwd_as_string(Some(stack))?;
-    let path = match nu_path::canonicalize_with(prefix, path) {
-        Ok(path) => path,
-        Err(e) if e.to_string().contains("os error 2") =>
-        // path we're trying to glob doesn't exist,
-        {
-            std::path::PathBuf::new() // user should get empty list not an error
-        }
-        Err(e) => {
-            return Err(ShellError::GenericError {
-                error: "error in canonicalize".into(),
-                msg: format!("{e}"),
-                span: Some(glob_span),
-                help: None,
-                inner: vec![],
-            });
-        }
-    };
-
-    let link_behavior = match follow_symlinks {
-        true => wax::LinkBehavior::ReadTarget,
-        false => wax::LinkBehavior::ReadFile,
-    };
-
-    let result = if !not_patterns.is_empty() {
-        let np: Vec<&str> = not_patterns.iter().map(|s| s as &str).collect();
-        let glob_results = glob
-            .walk_with_behavior(
-                path,
-                WalkBehavior {
-                    depth: folder_depth,
-                    link: link_behavior,
-                },
-            )
-            .into_owned()
-            .not(np)
-            .map_err(|err| ShellError::GenericError {
-                error: "error with glob's not pattern".into(),
-                msg: format!("{err}"),
-                span: Some(not_pattern_span),
-                help: None,
-                inner: vec![],
-            })?
-            .flatten();
-        glob_to_value(
-            engine_state.signals(),
-            glob_results,
-            no_dirs,
-            no_files,
-            no_symlinks,
-            span,
-        )
-    } else {
-        let glob_results = glob
-            .walk_with_behavior(
-                path,
-                WalkBehavior {
-                    depth: folder_depth,
-                    link: link_behavior,
-                },
-            )
-            .into_owned()
-            .flatten();
-        glob_to_value(
-            engine_state.signals(),
-            glob_results,
-            no_dirs,
-            no_files,
-            no_symlinks,
-            span,
-        )
-    };
-
-    Ok(result.into_pipeline_data(span, engine_state.signals().clone()))
 }
