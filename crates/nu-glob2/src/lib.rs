@@ -16,7 +16,7 @@ pub enum FilterType {
     Symlink,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct WalkOptions {
     max_depth: Option<usize>,
     no_dirs: bool,
@@ -26,7 +26,7 @@ pub struct WalkOptions {
     exclusions: Vec<Glob>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Glob {
     pattern_string: String,
     span: Option<Span>,
@@ -69,9 +69,21 @@ impl WalkOptions {
         self
     }
 
-    pub fn exclude_patterns(mut self, patterns: Vec<Glob>) -> Self {
-        self.exclusions = patterns;
+    pub fn exclude_patterns(mut self, patterns: impl Into<Vec<Glob>>) -> Self {
+        self.exclusions = patterns.into();
         self
+    }
+
+    pub fn would_exclude_type(&self, path: &std::path::Path) -> bool {
+        if path.is_file() {
+            self.no_files
+        } else if path.is_dir() {
+            self.no_dirs
+        } else if path.is_symlink() {
+            self.no_symlinks
+        } else {
+            false
+        }
     }
 }
 
@@ -132,6 +144,11 @@ impl CompiledGlob {
         self.inner_glob.get_pattern_string()
     }
 
+    /// Return the WalkOption struct used to compile this Glob
+    pub fn get_walk_options(&self) -> &WalkOptions {
+        &self.walk_options
+    }
+
     pub fn absolute_prefix(&self) -> Option<std::path::PathBuf> {
         self.program.absolute_prefix.clone()
     }
@@ -141,13 +158,20 @@ impl CompiledGlob {
         matcher::path_matches(path, &self.program) == matcher::MatchResult::none()
     }
 
+    /// Iterate over the filesystem to return paths matching the glob
     pub fn walk(
         &self,
     ) -> impl Iterator<Item = Result<std::path::PathBuf, error::GlobError>> + Send {
+        let walk_options = self.get_walk_options().clone();
         let relative_to = self
             .absolute_prefix()
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        globber::glob(relative_to, self.inner_program(), &self.walk_options)
+        globber::glob(relative_to, self.inner_program(), self.get_walk_options()).filter(
+            move |res| match res {
+                Ok(path) => !walk_options.would_exclude_type(path),
+                Err(_) => true,
+            },
+        )
     }
 }
 
