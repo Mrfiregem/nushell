@@ -1,8 +1,8 @@
 use nu_engine::command_prelude::*;
-use nu_protocol::{ListStream, Signals};
-use wax::{Glob as WaxGlob, WalkBehavior, WalkEntry};
+use nu_protocol::ListStream;
 
 use nu_glob2::{Glob as NuGlob, WalkOptions};
+use nu_path::expand_tilde;
 
 #[derive(Clone)]
 pub struct Glob;
@@ -144,7 +144,10 @@ fn value_into_glob(value: Value, span: Span) -> Result<NuGlob, ShellError> {
         Value::String { val, internal_span }
         | Value::Glob {
             val, internal_span, ..
-        } => Ok(NuGlob::new(val, Some(internal_span))),
+        } => Ok(NuGlob::new(
+            expand_tilde(val).to_string_lossy(),
+            Some(internal_span),
+        )),
         _ => Err(ShellError::IncorrectValue {
             msg: "Incorrect glob pattern supplied to glob. Please use string only.".to_string(),
             val_span: span,
@@ -187,15 +190,14 @@ fn new_glob(
         .compile(options)
         .map_err(|e| e.into_shell_error(span))?;
 
-    let results: Vec<Value> = glob
-        .walk()
-        .filter_map(|f| {
-            f.ok()
-                .map(|path| Value::string(path.to_string_lossy(), span))
-        })
-        .collect();
-
-    Ok(results.into_pipeline_data(span, engine_state.signals().clone()))
+    Ok(PipelineData::from(ListStream::new(
+        glob.walk().map(move |result| match result {
+            Ok(path) => Value::string(path.to_string_lossy(), span),
+            Err(err) => Value::error(err.into_shell_error(span), span),
+        }),
+        span,
+        engine_state.signals().clone(),
+    )))
 }
 
 #[cfg(windows)]
