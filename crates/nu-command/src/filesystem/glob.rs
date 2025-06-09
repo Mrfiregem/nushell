@@ -1,5 +1,5 @@
 use nu_engine::command_prelude::*;
-use nu_protocol::ListStream;
+use nu_protocol::{FromValue, ListStream};
 
 use nu_glob2::{Glob as NuGlob, WalkOptions};
 use nu_path::expand_tilde;
@@ -139,23 +139,6 @@ impl Command for Glob {
     }
 }
 
-fn value_into_glob(value: Value, span: Span) -> Result<NuGlob, ShellError> {
-    match value {
-        Value::String { val, internal_span }
-        | Value::Glob {
-            val, internal_span, ..
-        } => Ok(NuGlob::new(
-            expand_tilde(val).to_string_lossy(),
-            Some(internal_span),
-        )),
-        _ => Err(ShellError::IncorrectValue {
-            msg: "Incorrect glob pattern supplied to glob. Please use string only.".to_string(),
-            val_span: span,
-            call_span: span,
-        }),
-    }
-}
-
 fn build_walk_options(
     engine_state: &EngineState,
     stack: &mut Stack,
@@ -165,7 +148,7 @@ fn build_walk_options(
         None => Vec::new(),
         Some(list) => list
             .into_iter()
-            .map(|val| value_into_glob(val, call.head))
+            .map(NuGlob::from_value)
             .collect::<Result<_, _>>()?,
     };
     let options = WalkOptions::build()
@@ -186,7 +169,7 @@ fn new_glob(
     let input_value: Value = call.req(engine_state, stack, 0)?;
 
     let options = build_walk_options(engine_state, stack, call)?;
-    let glob = value_into_glob(input_value, span)?
+    let glob = NuGlob::from_value(input_value)?
         .compile(options)
         .map_err(|e| e.into_shell_error(span))?;
 

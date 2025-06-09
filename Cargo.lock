@@ -3913,6 +3913,7 @@ version = "0.104.2"
 dependencies = [
  "log",
  "miette",
+ "nu-path",
  "nu-protocol",
  "rayon",
  "thiserror 1.0.69",

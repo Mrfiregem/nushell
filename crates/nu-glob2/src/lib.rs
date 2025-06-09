@@ -1,4 +1,4 @@
-use nu_protocol::{ShellError, Span, Value};
+use nu_protocol::{FromValue, ShellError, Span, Value};
 use std::sync::Arc;
 
 mod compiler;
@@ -13,7 +13,7 @@ pub(crate) type GlobResult<T> = Result<T, error::GlobError>;
 pub enum FilterType {
     File,
     Directory,
-    Symlink
+    Symlink,
 }
 
 #[derive(Default, Debug)]
@@ -23,7 +23,7 @@ pub struct WalkOptions {
     no_files: bool,
     no_symlinks: bool,
     follow_symlinks: bool,
-    exclusions: Vec<Glob>
+    exclusions: Vec<Glob>,
 }
 
 #[derive(Debug)]
@@ -53,17 +53,17 @@ impl WalkOptions {
         self.no_files = option;
         self
     }
-    
+
     pub fn exclude_directories(mut self, option: bool) -> Self {
         self.no_dirs = option;
         self
     }
-    
+
     pub fn exclude_symlinks(mut self, option: bool) -> Self {
         self.no_symlinks = option;
         self
     }
-    
+
     pub fn follow_symlinks(mut self, option: bool) -> Self {
         self.follow_symlinks = option;
         self
@@ -117,23 +117,6 @@ impl std::fmt::Display for Glob {
     }
 }
 
-impl nu_protocol::FromValue for Glob {
-    fn from_value(value: Value) -> Result<Self, ShellError> {
-        if let Value::Glob {
-            val, internal_span, ..
-        }
-        | Value::String { val, internal_span } = value
-        {
-            Ok(Glob::new(val, Some(internal_span)))
-        } else {
-            Err(ShellError::InvalidGlobPattern {
-                msg: format!("Expected glob/string; got {}", value.get_type()),
-                span: value.span(),
-            })
-        }
-    }
-}
-
 impl CompiledGlob {
     /// Convert a CompiledGlob object back into a Glob
     pub fn into_glob(self) -> Glob {
@@ -164,12 +147,31 @@ impl CompiledGlob {
         let relative_to = self
             .absolute_prefix()
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        globber::glob(relative_to, self.inner_program())
+        globber::glob(relative_to, self.inner_program(), &self.walk_options)
     }
 }
 
 impl std::fmt::Display for CompiledGlob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.get_pattern_string())
+    }
+}
+
+impl FromValue for Glob {
+    fn from_value(value: Value) -> Result<Self, ShellError> {
+        match value {
+            Value::String { val, internal_span }
+            | Value::Glob {
+                val, internal_span, ..
+            } => Ok(Glob::new(
+                nu_path::expand_tilde(val).to_string_lossy(),
+                Some(internal_span),
+            )),
+            _ => Err(ShellError::IncorrectValue {
+                msg: "Incorrect glob pattern supplied to glob. Please use string only.".to_string(),
+                val_span: value.span(),
+                call_span: value.span(),
+            }),
+        }
     }
 }
