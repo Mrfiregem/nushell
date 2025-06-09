@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 nu-protocol = { path = "../nu-protocol", version = "0.104.2" }
+nu-path = { path = "../nu-path", version = "0.104.2" }
 log = { workspace = true }
 rayon = { workspace = true }
 miette = { workspace = true }
