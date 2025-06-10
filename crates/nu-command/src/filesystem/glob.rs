@@ -2,7 +2,6 @@ use nu_engine::command_prelude::*;
 use nu_protocol::{FromValue, ListStream};
 
 use nu_glob2::{Glob as NuGlob, WalkOptions};
-use nu_path::expand_tilde;
 
 #[derive(Clone)]
 pub struct Glob;
@@ -139,6 +138,23 @@ impl Command for Glob {
     }
 }
 
+fn compile_exclusions(globs: Vec<Value>) -> Result<Vec<nu_glob2::CompiledGlob>, ShellError> {
+    let span = globs
+        .first()
+        .map(|val| val.span())
+        .unwrap_or_else(Span::unknown);
+
+    globs
+        .into_iter()
+        .map(|val| {
+            NuGlob::from_value(val).and_then(move |glob| {
+                glob.compile(WalkOptions::default())
+                    .map_err(|err| err.into_shell_error(span))
+            })
+        })
+        .collect::<Result<Vec<_>, ShellError>>()
+}
+
 fn build_walk_options(
     engine_state: &EngineState,
     stack: &mut Stack,
@@ -146,11 +162,10 @@ fn build_walk_options(
 ) -> Result<WalkOptions, ShellError> {
     let exclusion_patterns = match call.get_flag::<Vec<Value>>(engine_state, stack, "exclude")? {
         None => Vec::new(),
-        Some(list) => list
-            .into_iter()
-            .map(NuGlob::from_value)
-            .collect::<Result<_, _>>()?,
+        Some(list) => compile_exclusions(list)?,
     };
+    eprintln!("list = {:#?}", exclusion_patterns);
+
     let options = WalkOptions::build()
         .max_depth(call.get_flag(engine_state, stack, "depth")?)
         .exclude_files(call.has_flag(engine_state, stack, "no-file")?)
