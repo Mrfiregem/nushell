@@ -77,11 +77,7 @@ impl WalkOptions {
 
     pub fn would_exclude_type(&self, path: &std::path::Path) -> bool {
         if !self.exclusions.is_empty() {
-            return self.exclusions.iter().any(|glob| {
-                let matches = glob.matches(path);
-                eprintln!("path {} matches? {}", path.display(), matches);
-                matches
-            })
+            return self.exclusions.iter().any(|glob| glob.matches(path));
         }
         if path.is_file() {
             self.no_files

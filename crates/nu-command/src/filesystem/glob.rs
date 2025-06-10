@@ -164,7 +164,6 @@ fn build_walk_options(
         None => Vec::new(),
         Some(list) => compile_exclusions(list)?,
     };
-    eprintln!("list = {:#?}", exclusion_patterns);
 
     let options = WalkOptions::build()
         .max_depth(call.get_flag(engine_state, stack, "depth")?)
