@@ -23,7 +23,7 @@ pub struct WalkOptions {
     no_files: bool,
     no_symlinks: bool,
     follow_symlinks: bool,
-    exclusions: Vec<Glob>,
+    exclusions: Vec<CompiledGlob>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +33,7 @@ pub struct Glob {
     pattern: Arc<parser::Pattern>,
 }
 
+#[derive(Debug, Clone)]
 pub struct CompiledGlob {
     inner_glob: Glob,
     walk_options: WalkOptions,
@@ -69,12 +70,19 @@ impl WalkOptions {
         self
     }
 
-    pub fn exclude_patterns(mut self, patterns: impl Into<Vec<Glob>>) -> Self {
+    pub fn exclude_patterns(mut self, patterns: impl Into<Vec<CompiledGlob>>) -> Self {
         self.exclusions = patterns.into();
         self
     }
 
     pub fn would_exclude_type(&self, path: &std::path::Path) -> bool {
+        if !self.exclusions.is_empty() {
+            return self.exclusions.iter().any(|glob| {
+                let matches = glob.matches(path);
+                eprintln!("path {} matches? {}", path.display(), matches);
+                matches
+            })
+        }
         if path.is_file() {
             self.no_files
         } else if path.is_dir() {
@@ -155,7 +163,7 @@ impl CompiledGlob {
 
     /// Check if a given path would match the glob pattern
     pub fn matches(&self, path: &std::path::Path) -> bool {
-        matcher::path_matches(path, &self.program) == matcher::MatchResult::none()
+        matcher::path_matches(path, &self.program).valid_as_complete_match
     }
 
     /// Iterate over the filesystem to return paths matching the glob
