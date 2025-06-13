@@ -188,9 +188,9 @@ fn new_glob(
         .map_err(|e| e.into_shell_error(span))?;
 
     Ok(PipelineData::from(ListStream::new(
-        glob.walk().map(move |result| match result {
-            Ok(path) => Value::string(path.to_string_lossy(), span),
-            Err(err) => Value::error(err.into_shell_error(span), span),
+        glob.walk().filter_map(move |res| {
+            res.ok()
+                .map(|path| Value::string(path.to_string_lossy().to_string(), span))
         }),
         span,
         engine_state.signals().clone(),
