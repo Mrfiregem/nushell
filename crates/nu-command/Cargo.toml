@@ -20,7 +20,7 @@ nu-cmd-base = { path = "../nu-cmd-base", version = "0.105.2" }
 nu-color-config = { path = "../nu-color-config", version = "0.105.2" }
 nu-engine = { path = "../nu-engine", version = "0.105.2", default-features = false }
 nu-glob = { path = "../nu-glob", version = "0.105.2" }
-nu-glob2 = { path = "../nu-glob2", version = "0.105.1" }
+nu-glob2 = { path = "../nu-glob2", version = "0.105.2" }
 nu-json = { path = "../nu-json", version = "0.105.2" }
 nu-parser = { path = "../nu-parser", version = "0.105.2" }
 nu-path = { path = "../nu-path", version = "0.105.2" }

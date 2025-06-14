@@ -1,11 +1,11 @@
 [package]
 name = "nu-glob2"
-version = "0.105.1"
+version = "0.105.2"
 edition = "2021"
 
 [dependencies]
-nu-protocol = { path = "../nu-protocol", version = "0.105.1" }
-nu-path = { path = "../nu-path", version = "0.105.1" }
+nu-protocol = { path = "../nu-protocol", version = "0.105.2" }
+nu-path = { path = "../nu-path", version = "0.105.2" }
 log = { workspace = true }
 rayon = { workspace = true }
 miette = { workspace = true }
