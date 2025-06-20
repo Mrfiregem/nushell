@@ -70,7 +70,10 @@ $env.config.history.isolation = true
 # Miscellaneous Settings
 # ----------------------
 
-# show_banner (bool): Enable or disable the welcome banner at startup
+# show_banner (bool|string): Enable or disable the welcome banner at startup
+# true | "full": show the full banner
+# "short": just show the start-up time
+# false | "none": don't show a banner
 $env.config.show_banner = true
 
 # rm.always_trash (bool):
@@ -202,14 +205,12 @@ $env.config.shell_integration.osc2 = true
 # osc7 (bool):
 # Nushell will report the current directory to the terminal using OSC 7. This is useful when
 # spawning new tabs in the same directory.
-# This is disabled by default on Windows in favor of the `osc9_9` option.
-$env.config.shell_integration.osc7 = true
+$env.config.shell_integration.osc7 = ($nu.os-info.name != windows)
 
 # osc9_9 (bool):
 # Enables/Disables OSC 9;9 support, originally a ConEmu terminal feature. This is an
 # alternative to OSC 7 which also communicates the current path to the terminal.
-# This is enabled by default on Windows as it is used by the Windows Terminal.
-$env.config.shell_integration.osc9_9 = false
+$env.config.shell_integration.osc9_9 = ($nu.os-info.name == windows)
 
 # osc8 (bool):
 # When true, the `ls` command will generate clickable links that can be launched in another
