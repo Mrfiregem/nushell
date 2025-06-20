@@ -28,7 +28,7 @@ fn run_cmd() -> Result<(), String> {
             println!("{:#?}", glob.get_pattern());
         }
         Some(b"compile") => {
-            let program = glob.compile().map_err(convert_error)?;
+            let program = glob.compile().map_err(convert_error)?.get_program().to_owned();
             print!("{}", program);
         }
         Some(b"matches") => {
@@ -62,7 +62,8 @@ fn run_cmd() -> Result<(), String> {
                 std::process::exit(1);
             }
         }
-        _ => return Err("invalid command".into()),
+        Some(cmd) => return Err(format!("invalid command: {}", String::from_utf8_lossy(cmd))),
+        None => return Err("no command given".into()),
     }
 
     Ok(())
