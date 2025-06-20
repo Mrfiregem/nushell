@@ -1,5 +1,4 @@
 use nu_glob2::*;
-use std::ops::Deref;
 use std::{io::Write, path::PathBuf};
 
 fn main() {
@@ -22,20 +21,19 @@ fn run_cmd() -> Result<(), String> {
         Some(pat) => pat,
         None => return Err("missing pattern".into()),
     };
-    let glob = Glob::new(&*pattern_string.to_string_lossy(), None);
-    let options = WalkOptions::default();
+    let glob = Glob::new(pattern_string.to_string_lossy());
 
     match args.next().map(|s| s.into_encoded_bytes()).as_deref() {
         Some(b"parse") => {
-            println!("{:#?}", glob.get_pattern().deref());
+            println!("{:#?}", glob.get_pattern());
         }
         Some(b"compile") => {
-            let program = glob.compile(options).map_err(convert_error)?;
+            let program = glob.compile().map_err(convert_error)?;
             print!("{}", program);
         }
         Some(b"matches") => {
             let path: PathBuf = args.next().ok_or("no path given to match on")?.into();
-            let program = glob.compile(options).map_err(convert_error)?;
+            let program = glob.compile().map_err(convert_error)?;
             if program.matches(&path) {
                 println!("{} does match the path \"{}\"", program, path.display());
             } else {
@@ -43,7 +41,7 @@ fn run_cmd() -> Result<(), String> {
             }
         }
         Some(b"glob") => {
-            let program = glob.compile(options).map_err(convert_error)?;
+            let program = glob.compile().map_err(convert_error)?;
             let mut stdout = std::io::stdout();
             let mut failed = false;
             for result in program.walk() {
