@@ -1,7 +1,7 @@
 use nu_engine::command_prelude::*;
-use nu_protocol::{FromValue, ListStream};
+use nu_protocol::ListStream;
 
-use nu_glob2::{Glob as NuGlob, WalkOptions};
+use nu_glob2::Glob as NuGlob;
 
 #[derive(Clone)]
 pub struct Glob;
@@ -138,61 +138,29 @@ impl Command for Glob {
     }
 }
 
-fn compile_exclusions(globs: Vec<Value>) -> Result<Vec<nu_glob2::CompiledGlob>, ShellError> {
-    let span = globs
-        .first()
-        .map(|val| val.span())
-        .unwrap_or_else(Span::unknown);
-
-    globs
-        .into_iter()
-        .map(|val| {
-            NuGlob::from_value(val).and_then(move |glob| {
-                glob.compile(WalkOptions::default())
-                    .map_err(|err| err.into_shell_error(span))
-            })
-        })
-        .collect::<Result<Vec<_>, ShellError>>()
-}
-
-fn build_walk_options(
-    engine_state: &EngineState,
-    stack: &mut Stack,
-    call: &Call,
-) -> Result<WalkOptions, ShellError> {
-    let exclusion_patterns = match call.get_flag::<Vec<Value>>(engine_state, stack, "exclude")? {
-        None => Vec::new(),
-        Some(list) => compile_exclusions(list)?,
-    };
-
-    let options = WalkOptions::build()
-        .max_depth(call.get_flag(engine_state, stack, "depth")?)
-        .exclude_files(call.has_flag(engine_state, stack, "no-file")?)
-        .exclude_directories(call.has_flag(engine_state, stack, "no-dir")?)
-        .exclude_symlinks(call.has_flag(engine_state, stack, "no-symlink")?)
-        .exclude_patterns(exclusion_patterns);
-    Ok(options)
-}
-
 fn new_glob(
     engine_state: &EngineState,
     stack: &mut Stack,
     call: &Call,
 ) -> Result<PipelineData, ShellError> {
-    let span = call.head;
-    let input_value: Value = call.req(engine_state, stack, 0)?;
+    let input_pattern: Value = call.req(engine_state, stack, 0)?;
+    let pattern_span = input_pattern.span();
 
-    let options = build_walk_options(engine_state, stack, call)?;
-    let glob = NuGlob::from_value(input_value)?
-        .compile(options)
-        .map_err(|e| e.into_shell_error(span))?;
+    let no_files = call.has_flag(engine_state, stack, "no-file")?;
+    let no_dirs = call.has_flag(engine_state, stack, "no-dir")?;
+    let no_symlinks = call.has_flag(engine_state, stack, "no-symlink")?;
+
+    let glob = NuGlob::new(input_pattern.into_string()?)
+        .compile()
+        .map_err(move |e| e.into_shell_error(pattern_span))?;
 
     Ok(PipelineData::from(ListStream::new(
-        glob.walk().filter_map(move |res| {
-            res.ok()
-                .map(|path| Value::string(path.to_string_lossy().to_string(), span))
-        }),
-        span,
+        glob.walk_and_filter(no_files, no_dirs, no_symlinks)
+            .filter_map(move |res| {
+                res.ok()
+                    .map(|path| Value::string(path.to_string_lossy(), pattern_span))
+            }),
+        call.head,
         engine_state.signals().clone(),
     )))
 }

@@ -6,13 +6,12 @@ use std::{fs, io};
 use crate::compiler::Program;
 use crate::error::GlobError;
 use crate::matcher::path_matches;
-use crate::{GlobResult, WalkOptions};
+use crate::GlobResult;
 
 /// Return PathBufs that match the given compiled glob
 pub fn glob(
     relative_to: impl Into<PathBuf>,
     program: Arc<Program>,
-    walk_options: &WalkOptions,
 ) -> impl Iterator<Item = GlobResult<PathBuf>> + Send {
     let (tx, rx) = sync_channel(4096);
 

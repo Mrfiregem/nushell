@@ -3866,7 +3866,7 @@ dependencies = [
 
 [[package]]
 name = "nu-glob2"
-version = "0.105.1"
+version = "0.105.2"
 dependencies = [
  "log",
  "miette",
