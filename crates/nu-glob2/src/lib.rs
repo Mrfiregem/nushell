@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 mod compiler;
 mod globber;
 mod matcher;
@@ -18,13 +16,13 @@ pub enum FilterType {
 #[derive(Debug, Clone)]
 pub struct Glob {
     pattern_string: String,
-    pattern: Arc<parser::Pattern>,
+    pattern: std::sync::Arc<parser::Pattern>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CompiledGlob {
     pattern_string: String,
-    program: Arc<compiler::Program>,
+    program: std::sync::Arc<compiler::Program>,
 }
 
 impl Glob {
@@ -32,7 +30,7 @@ impl Glob {
     pub fn new(pattern_string: impl Into<String>) -> Self {
         let string = pattern_string.into();
         Glob {
-            pattern: Arc::new(parser::parse(&string)),
+            pattern: std::sync::Arc::new(parser::parse(&string)),
             pattern_string: string,
         }
     }
@@ -47,15 +45,11 @@ impl Glob {
         self.pattern.as_ref()
     }
 
-    fn into_pattern(self) -> Arc<parser::Pattern> {
-        self.pattern
-    }
-
     /// Compile the glob to use for matching
     pub fn compile(self) -> GlobResult<CompiledGlob> {
         Ok(CompiledGlob {
             pattern_string: self.get_pattern_string().to_string(),
-            program: Arc::new(compiler::compile(&self.into_pattern())?),
+            program: std::sync::Arc::new(compiler::compile(self.get_pattern())?),
         })
     }
 }
@@ -71,7 +65,7 @@ impl CompiledGlob {
         self.program.as_ref()
     }
 
-    fn into_program(self) -> Arc<compiler::Program> {
+    fn into_program(self) -> std::sync::Arc<compiler::Program> {
         self.program
     }
 
