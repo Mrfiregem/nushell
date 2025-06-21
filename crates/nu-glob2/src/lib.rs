@@ -91,7 +91,7 @@ impl CompiledGlob {
 
     /// Iterate over the filesystem to return paths matching the glob
     pub fn walk(self) -> impl Iterator<Item = Result<std::path::PathBuf, error::GlobError>> + Send {
-        let relative_to = self.get_prefix().to_path_buf();
+        let relative_to = self.get_prefix();
         globber::glob(relative_to, self.into_program())
     }
 
