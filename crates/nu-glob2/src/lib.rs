@@ -74,16 +74,14 @@ impl CompiledGlob {
         self.pattern_string.as_str()
     }
 
-    fn absolute_prefix(&self) -> Option<&std::path::Path> {
-        match self.get_program().absolute_prefix {
-            Some(ref p) => Some(p.as_path()),
-            None => None,
-        }
+    fn absolute_prefix(&self) -> Option<std::path::PathBuf> {
+        self.get_program().absolute_prefix.clone()
     }
 
-    pub fn get_prefix(&self) -> &std::path::Path {
+    pub fn get_prefix(&self) -> std::path::PathBuf {
         self.absolute_prefix()
-            .unwrap_or_else(|| std::path::Path::new(""))
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
     }
 
     /// Check if a given path would match the glob pattern

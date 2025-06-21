@@ -28,8 +28,8 @@ fn run_cmd() -> Result<(), String> {
             println!("{:#?}", glob.get_pattern());
         }
         Some(b"compile") => {
-            let program = glob.compile().map_err(convert_error)?.get_program().to_owned();
-            print!("{}", program);
+            let compiled_glob = glob.compile().map_err(convert_error)?;
+            print!("{}", compiled_glob.get_program());
         }
         Some(b"matches") => {
             let path: PathBuf = args.next().ok_or("no path given to match on")?.into();
