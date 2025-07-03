@@ -9,8 +9,26 @@ use unicode_segmentation::UnicodeSegmentation;
 #[derive(Clone)]
 pub struct StrSubstring;
 
+enum Index {
+    Range(IntRange),
+    Index(i64),
+}
+
+impl nu_protocol::FromValue for Index {
+    fn from_value(value: Value) -> Result<Self, ShellError> {
+        match value {
+            val @ Value::Range { .. } => Ok(Index::Range(IntRange::from_value(val)?)),
+            Value::Int { val, .. } => Ok(Index::Index(val)),
+            _ => Err(ShellError::TypeMismatch {
+                err_message: "Only supports integer and range values".to_string(),
+                span: value.span(),
+            }),
+        }
+    }
+}
+
 struct Arguments {
-    range: IntRange,
+    index: Index,
     cell_paths: Option<Vec<CellPath>>,
     graphemes: bool,
 }
@@ -77,12 +95,12 @@ impl Command for StrSubstring {
         call: &Call,
         input: PipelineData,
     ) -> Result<PipelineData, ShellError> {
-        let range: IntRange = call.req(engine_state, stack, 0)?;
+        let index: Index = call.req(engine_state, stack, 0)?;
 
         let cell_paths: Vec<CellPath> = call.rest(engine_state, stack, 1)?;
         let cell_paths = (!cell_paths.is_empty()).then_some(cell_paths);
         let args = Arguments {
-            range,
+            index,
             cell_paths,
             graphemes: grapheme_flags(engine_state, stack, call)?,
         };
@@ -95,12 +113,12 @@ impl Command for StrSubstring {
         call: &Call,
         input: PipelineData,
     ) -> Result<PipelineData, ShellError> {
-        let range: IntRange = call.req_const(working_set, 0)?;
+        let index: Index = call.req_const(working_set, 0)?;
 
         let cell_paths: Vec<CellPath> = call.rest_const(working_set, 1)?;
         let cell_paths = (!cell_paths.is_empty()).then_some(cell_paths);
         let args = Arguments {
-            range,
+            index,
             cell_paths,
             graphemes: grapheme_flags_const(working_set, call)?,
         };
@@ -143,7 +161,7 @@ fn action(input: &Value, args: &Arguments, head: Span) -> Value {
                     .map(|(idx, s)| (idx, s.len()))
                     .collect::<Vec<_>>();
 
-                let (idx_start, idx_end) = args.range.absolute_bounds(indices.len());
+                let (idx_start, idx_end) = args.index.absolute_bounds(indices.len());
                 let idx_range = match idx_end {
                     Bound::Excluded(end) => &indices[idx_start..end],
                     Bound::Included(end) => &indices[idx_start..=end],
@@ -158,7 +176,7 @@ fn action(input: &Value, args: &Arguments, head: Span) -> Value {
                     String::new()
                 }
             } else {
-                let (start, end) = args.range.absolute_bounds(s.len());
+                let (start, end) = args.index.absolute_bounds(s.len());
                 let s = match end {
                     Bound::Excluded(end) => &s.as_bytes()[start..end],
                     Bound::Included(end) => &s.as_bytes()[start..=end],
@@ -297,7 +315,7 @@ mod tests {
             let actual = action(
                 &word,
                 &Arguments {
-                    range: expectation.range(),
+                    index: expectation.range(),
                     cell_paths: None,
                     graphemes: false,
                 },
@@ -315,7 +333,7 @@ mod tests {
         let range: RangeHelper = (4..=5).into();
         let options = Arguments {
             cell_paths: None,
-            range: range.into(),
+            index: range.into(),
             graphemes: false,
         };
 
