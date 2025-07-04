@@ -1,9 +1,8 @@
-use std::ops::Bound;
-
 use crate::{grapheme_flags, grapheme_flags_const};
 use nu_cmd_base::input_handler::{CmdArgument, operate};
 use nu_engine::command_prelude::*;
 use nu_protocol::{IntRange, engine::StateWorkingSet};
+use std::ops::Bound;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone)]
@@ -11,14 +10,20 @@ pub struct StrSubstring;
 
 enum Index {
     Range(IntRange),
-    Index(i64),
+    Index(usize),
 }
 
 impl nu_protocol::FromValue for Index {
     fn from_value(value: Value) -> Result<Self, ShellError> {
         match value {
             val @ Value::Range { .. } => Ok(Index::Range(IntRange::from_value(val)?)),
-            Value::Int { val, .. } => Ok(Index::Index(val)),
+            Value::Int { val, .. } => match usize::try_from(val) {
+                Ok(idx) => Ok(Index::Index(idx)),
+                Err(_) => Err(ShellError::TypeMismatch {
+                    err_message: "Index must be an unsigned integer".to_string(),
+                    span: value.span(),
+                }),
+            },
             _ => Err(ShellError::TypeMismatch {
                 err_message: "Only supports integer and range values".to_string(),
                 span: value.span(),
@@ -161,28 +166,44 @@ fn action(input: &Value, args: &Arguments, head: Span) -> Value {
                     .map(|(idx, s)| (idx, s.len()))
                     .collect::<Vec<_>>();
 
-                let (idx_start, idx_end) = args.index.absolute_bounds(indices.len());
-                let idx_range = match idx_end {
-                    Bound::Excluded(end) => &indices[idx_start..end],
-                    Bound::Included(end) => &indices[idx_start..=end],
-                    Bound::Unbounded => &indices[idx_start..],
-                };
+                match args.index {
+                    Index::Range(range) => {
+                        let (idx_start, idx_end) = range.absolute_bounds(indices.len());
+                        let idx_range = match idx_end {
+                            Bound::Excluded(end) => &indices[idx_start..end],
+                            Bound::Included(end) => &indices[idx_start..=end],
+                            Bound::Unbounded => &indices[idx_start..],
+                        };
 
-                if let Some((start, end)) = idx_range.first().zip(idx_range.last()) {
-                    let start = start.0;
-                    let end = end.0 + end.1;
-                    s[start..end].to_owned()
-                } else {
-                    String::new()
+                        if let Some((start, end)) = idx_range.first().zip(idx_range.last()) {
+                            let start = start.0;
+                            let end = end.0 + end.1;
+                            s[start..end].to_owned()
+                        } else {
+                            String::new()
+                        }
+                    }
+                    Index::Index(idx) => match s.grapheme_indices(true).nth(idx) {
+                        Some((_, str)) => str.to_owned(),
+                        None => String::new(),
+                    },
                 }
             } else {
-                let (start, end) = args.index.absolute_bounds(s.len());
-                let s = match end {
-                    Bound::Excluded(end) => &s.as_bytes()[start..end],
-                    Bound::Included(end) => &s.as_bytes()[start..=end],
-                    Bound::Unbounded => &s.as_bytes()[start..],
-                };
-                String::from_utf8_lossy(s).into_owned()
+                match args.index {
+                    Index::Range(range) => {
+                        let (start, end) = range.absolute_bounds(s.len());
+                        let s = match end {
+                            Bound::Excluded(end) => &s.as_bytes()[start..end],
+                            Bound::Included(end) => &s.as_bytes()[start..=end],
+                            Bound::Unbounded => &s.as_bytes()[start..],
+                        };
+                        String::from_utf8_lossy(s).into_owned()
+                    }
+                    Index::Index(idx) => match s.as_bytes().get(idx) {
+                        None => String::new(),
+                        Some(char) => char.to_string(),
+                    },
+                }
             };
             Value::string(s, head)
         }
@@ -205,7 +226,7 @@ fn action(input: &Value, args: &Arguments, head: Span) -> Value {
 mod tests {
     use nu_protocol::IntRange;
 
-    use super::{Arguments, Span, StrSubstring, Value, action};
+    use super::{Arguments, Index, Span, StrSubstring, Value, action};
 
     #[test]
     fn test_examples() {
@@ -315,7 +336,7 @@ mod tests {
             let actual = action(
                 &word,
                 &Arguments {
-                    index: expectation.range(),
+                    index: Index::Range(expectation.range()),
                     cell_paths: None,
                     graphemes: false,
                 },
@@ -333,7 +354,7 @@ mod tests {
         let range: RangeHelper = (4..=5).into();
         let options = Arguments {
             cell_paths: None,
-            index: range.into(),
+            index: Index::Range(range.into()),
             graphemes: false,
         };
 
