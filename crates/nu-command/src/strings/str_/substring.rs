@@ -70,7 +70,7 @@ impl Command for StrSubstring {
             )
             .required(
                 "range",
-                SyntaxShape::Any,
+                SyntaxShape::OneOf(vec![SyntaxShape::Range, SyntaxShape::Int]),
                 "The indexes to substring [start end].",
             )
             .rest(
@@ -201,7 +201,7 @@ fn action(input: &Value, args: &Arguments, head: Span) -> Value {
                     }
                     Index::Index(idx) => match s.as_bytes().get(idx) {
                         None => String::new(),
-                        Some(char) => char.to_string(),
+                        Some(char) => char::from(*char).to_string(),
                     },
                 }
             };
