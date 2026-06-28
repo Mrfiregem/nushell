@@ -123,7 +123,7 @@ impl Command for UpdateCells {
                     &mut ClosureEval::new(engine_state, stack, closure),
                     span,
                     columns.as_ref(),
-                );
+                )?;
                 Ok(input)
             }
             _ => {
@@ -146,18 +146,19 @@ fn update_record(
     closure: &mut ClosureEval,
     span: Span,
     cols: Option<&HashSet<String>>,
-) {
+) -> Result<(), ShellError> {
     if let Some(columns) = cols {
         for (col, val) in record.iter_mut() {
             if columns.contains(col) {
-                *val = eval_value(closure, span, std::mem::take(val));
+                *val = eval_value(closure, span, std::mem::take(val))?;
             }
         }
     } else {
         for (_, val) in record.iter_mut() {
-            *val = eval_value(closure, span, std::mem::take(val))
+            *val = eval_value(closure, span, std::mem::take(val))?;
         }
     }
+    Ok(())
 }
 
 struct UpdateCellIterator {
@@ -175,21 +176,23 @@ impl Iterator for UpdateCellIterator {
 
         let value = if let Value::Record { val, .. } = &mut value {
             let val = val.to_mut();
-            update_record(val, &mut self.closure, self.span, self.columns.as_ref());
-            value
+            update_record(val, &mut self.closure, self.span, self.columns.as_ref()).map(|_| value)
         } else {
             eval_value(&mut self.closure, self.span, value)
-        };
+        }
+        // The REPL does not display errors when they are in a table or record column.
+        // Instead, take advantage of the fact that errors in lists *are* caught and displayed, by
+        // replacing the entire record with an error value. This maintains streaming for tables.
+        .unwrap_or_else(|err| Value::error(err, self.span));
 
         Some(value)
     }
 }
 
-fn eval_value(closure: &mut ClosureEval, span: Span, value: Value) -> Value {
+fn eval_value(closure: &mut ClosureEval, span: Span, value: Value) -> Result<Value, ShellError> {
     closure
         .run_with_value(value)
         .and_then(|data| data.into_value(span))
-        .unwrap_or_else(|err| Value::error(err, span))
 }
 
 #[cfg(test)]
